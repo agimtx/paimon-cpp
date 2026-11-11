@@ -158,9 +158,26 @@ TEST(S3ObjectStoreClientTest, TestCustomEndpointAddressing) {
     ASSERT_OK_AND_ASSIGN(std::shared_ptr<ObjectStoreClient> https_client,
                          MakeS3ObjectStoreClient(https_options, http));
     ASSERT_OK(https_client->HeadObject({"bucket", "file"}));
-    ASSERT_EQ(http->request_.url, "https://s3.example.com/bucket/file");
+    ASSERT_EQ(http->request_.url, "https://bucket.s3.example.com/file");
+    ASSERT_EQ(http->request_.headers["host"], "bucket.s3.example.com");
     ASSERT_OK(https_client->HeadObject({"paimon.prod.data", "file"}));
-    ASSERT_EQ(http->request_.url, "https://s3.example.com/paimon.prod.data/file");
+    ASSERT_EQ(http->request_.url, "https://paimon.prod.data.s3.example.com/file");
+    ASSERT_EQ(http->request_.headers["host"], "paimon.prod.data.s3.example.com");
+
+    auto https_default_options = StaticOptions();
+    https_default_options[kS3EndpointOption] = "https://s3.example.com";
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<ObjectStoreClient> https_default_client,
+                         MakeS3ObjectStoreClient(https_default_options, http));
+    ASSERT_OK(https_default_client->HeadObject({"bucket", "file"}));
+    ASSERT_EQ(http->request_.url, "https://s3.example.com/bucket/file");
+
+    auto https_path_options = StaticOptions();
+    https_path_options[kS3EndpointOption] = "https://s3.example.com";
+    https_path_options[kS3PathStyleAccessOption] = "true";
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<ObjectStoreClient> https_path_client,
+                         MakeS3ObjectStoreClient(https_path_options, http));
+    ASSERT_OK(https_path_client->HeadObject({"bucket", "file"}));
+    ASSERT_EQ(http->request_.url, "https://s3.example.com/bucket/file");
 
     auto http_options = StaticOptions();
     http_options[kS3EndpointOption] = "http://s3.example.com";

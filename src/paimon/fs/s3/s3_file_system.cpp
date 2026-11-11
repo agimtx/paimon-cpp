@@ -636,13 +636,13 @@ class S3ObjectStoreClient : public ObjectStoreClient,
             ParseEndpoint(use_default_endpoint ? fmt::format("https://s3.{}.{}", region,
                                                              AwsDnsSuffixForRegion(region))
                                                : endpoint->second));
-        auto path_style = options.find(kS3PathStyleAccessOption);
-        bool use_path_style =
-            path_style != options.end() &&
-            OptionsUtils::GetValueFromMap<bool>(options, kS3PathStyleAccessOption).value();
+        std::optional<bool> path_style;
+        if (options.find(kS3PathStyleAccessOption) != options.end()) {
+            path_style = OptionsUtils::GetValueFromMap<bool>(options, kS3PathStyleAccessOption).value();
+        }
         return std::shared_ptr<ObjectStoreClient>(new S3ObjectStoreClient(
             std::move(http_client), std::move(credentials), std::move(executor),
-            std::move(parsed_endpoint), std::move(region), use_path_style, use_default_endpoint));
+            std::move(parsed_endpoint), std::move(region), path_style, use_default_endpoint));
     }
 
     Result<ObjectMetadata> HeadObject(const ObjectStorePath& path) const override {
@@ -780,7 +780,7 @@ class S3ObjectStoreClient : public ObjectStoreClient,
     S3ObjectStoreClient(std::shared_ptr<HttpClient> http_client,
                         std::shared_ptr<aws_credentials_provider> credentials,
                         std::unique_ptr<Executor> executor, Endpoint endpoint, std::string region,
-                        bool path_style, bool use_default_endpoint)
+                        std::optional<bool> path_style, bool use_default_endpoint)
         : http_client_(std::move(http_client)),
           credentials_(std::move(credentials)),
           endpoint_(std::move(endpoint)),
@@ -805,12 +805,11 @@ class S3ObjectStoreClient : public ObjectStoreClient,
         if (request_path.empty() || request_path.back() != '/') {
             request_path += '/';
         }
-        bool use_path_style =
-            path_style_ ||
-            (use_default_endpoint_
-                 ? !IsVirtualHostableS3Bucket(object.bucket, false)
-                 : endpoint_.scheme != "http" || IsIpAddressAuthority(endpoint_.authority) ||
-                       !IsVirtualHostableS3Bucket(object.bucket, true));
+        bool use_path_style = path_style_.value_or(
+            use_default_endpoint_
+                ? !IsVirtualHostableS3Bucket(object.bucket, false)
+                : endpoint_.scheme != "http" || IsIpAddressAuthority(endpoint_.authority) ||
+                      !IsVirtualHostableS3Bucket(object.bucket, true));
         if (use_path_style) {
             request_path += UrlUtils::PercentEncode(object.bucket) + "/";
         } else {
@@ -894,7 +893,7 @@ class S3ObjectStoreClient : public ObjectStoreClient,
     std::shared_ptr<aws_credentials_provider> credentials_;
     Endpoint endpoint_;
     std::string region_;
-    bool path_style_ = false;
+    std::optional<bool> path_style_;
     bool use_default_endpoint_ = false;
     std::unique_ptr<Executor> executor_;
 };
