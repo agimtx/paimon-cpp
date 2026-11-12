@@ -638,7 +638,8 @@ class S3ObjectStoreClient : public ObjectStoreClient,
                                                : endpoint->second));
         std::optional<bool> path_style;
         if (options.find(kS3PathStyleAccessOption) != options.end()) {
-            path_style = OptionsUtils::GetValueFromMap<bool>(options, kS3PathStyleAccessOption).value();
+            path_style =
+                OptionsUtils::GetValueFromMap<bool>(options, kS3PathStyleAccessOption).value();
         }
         return std::shared_ptr<ObjectStoreClient>(new S3ObjectStoreClient(
             std::move(http_client), std::move(credentials), std::move(executor),
@@ -805,11 +806,12 @@ class S3ObjectStoreClient : public ObjectStoreClient,
         if (request_path.empty() || request_path.back() != '/') {
             request_path += '/';
         }
+        // Address buckets by virtual host unless asked otherwise, like the Java S3A client.
+        // Path style is only the fallback for endpoints that cannot carry a bucket subdomain.
         bool use_path_style = path_style_.value_or(
-            use_default_endpoint_
-                ? !IsVirtualHostableS3Bucket(object.bucket, false)
-                : endpoint_.scheme != "http" || IsIpAddressAuthority(endpoint_.authority) ||
-                      !IsVirtualHostableS3Bucket(object.bucket, true));
+            use_default_endpoint_ ? !IsVirtualHostableS3Bucket(object.bucket, false)
+                                  : IsIpAddressAuthority(endpoint_.authority) ||
+                                        !IsVirtualHostableS3Bucket(object.bucket, true));
         if (use_path_style) {
             request_path += UrlUtils::PercentEncode(object.bucket) + "/";
         } else {

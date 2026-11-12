@@ -140,12 +140,14 @@ TEST(S3ObjectStoreClientTest, TestDottedBucketUsesPathStyleForDefaultEndpoint) {
     ASSERT_EQ(http->request_.url, "https://s3.ap-northeast-2.amazonaws.com/paimon.prod.data/file");
     ASSERT_EQ(http->request_.headers["host"], "s3.ap-northeast-2.amazonaws.com");
 
-    auto path_style_options = StaticOptions();
-    path_style_options[kS3PathStyleAccessOption] = "false";
-    ASSERT_OK_AND_ASSIGN(std::shared_ptr<ObjectStoreClient> path_style_client,
-                         MakeS3ObjectStoreClient(path_style_options, http));
-    ASSERT_OK(path_style_client->HeadObject({"paimon.prod.data", "file"}));
-    ASSERT_EQ(http->request_.url, "https://s3.ap-northeast-2.amazonaws.com/paimon.prod.data/file");
+    // An explicit option overrides the default, so "false" opts into virtual-host addressing
+    // even for a bucket that is not virtual-hostable by the default-endpoint rules.
+    auto virtual_host_options = StaticOptions();
+    virtual_host_options[kS3PathStyleAccessOption] = "false";
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<ObjectStoreClient> virtual_host_client,
+                         MakeS3ObjectStoreClient(virtual_host_options, http));
+    ASSERT_OK(virtual_host_client->HeadObject({"paimon.prod.data", "file"}));
+    ASSERT_EQ(http->request_.url, "https://paimon.prod.data.s3.ap-northeast-2.amazonaws.com/file");
 }
 
 TEST(S3ObjectStoreClientTest, TestCustomEndpointAddressing) {
@@ -164,12 +166,15 @@ TEST(S3ObjectStoreClientTest, TestCustomEndpointAddressing) {
     ASSERT_EQ(http->request_.url, "https://paimon.prod.data.s3.example.com/file");
     ASSERT_EQ(http->request_.headers["host"], "paimon.prod.data.s3.example.com");
 
+    // Without an explicit option a custom endpoint uses virtual-host addressing, so stores
+    // that reject path-style requests (Tencent COS returns PathStyleDomainForbidden) work.
     auto https_default_options = StaticOptions();
     https_default_options[kS3EndpointOption] = "https://s3.example.com";
     ASSERT_OK_AND_ASSIGN(std::shared_ptr<ObjectStoreClient> https_default_client,
                          MakeS3ObjectStoreClient(https_default_options, http));
     ASSERT_OK(https_default_client->HeadObject({"bucket", "file"}));
-    ASSERT_EQ(http->request_.url, "https://s3.example.com/bucket/file");
+    ASSERT_EQ(http->request_.url, "https://bucket.s3.example.com/file");
+    ASSERT_EQ(http->request_.headers["host"], "bucket.s3.example.com");
 
     auto https_path_options = StaticOptions();
     https_path_options[kS3EndpointOption] = "https://s3.example.com";
